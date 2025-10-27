@@ -2,12 +2,12 @@ pipeline {
   agent any
 
   environment {
-    DOCKERHUB_REPO = 'gbmcse2001/hello-java-demo' 
+    DOCKERHUB_REPO = 'pratikkafle/hello' 
     IMAGE_TAG      =  new Date().format('yyyyMMdd-HHmm')
     DOCKERHUB_CRED = 'dockerhub-creds'
 
-    EC2_HOST       = 'ec2-18-222-238-156.us-east-2.compute.amazonaws.com'
-    EC2_USER       = 'bguo'
+    EC2_HOST       = 'ec2-18-118-241-253.us-east-2.compute.amazonaws.com'
+    EC2_USER       = 'kpratik'
     EC2_CREDS      = 'ec2-creds'                
     APP_PORT       = '8080'
   }
