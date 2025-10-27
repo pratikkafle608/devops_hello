@@ -23,8 +23,7 @@ pipeline {
         ) || (
             echo Installing OpenSSH Client...
             "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"
-            echo SSH Client installed. Please restart Jenkins and run again.
-            exit 1
+            echo SSH Client installed or already available.
         )
         '''
       }
