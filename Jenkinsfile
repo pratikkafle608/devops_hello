@@ -12,86 +12,23 @@ pipeline {
   }
   
   stages {
-    stage('Test EC2 Connection') {
+    stage('Install SSH Client') {
       steps {
-        withCredentials([sshUserPrivateKey(
-          credentialsId: env.EC2_CREDS,
-          keyFileVariable: 'EC2_KEY',
-          usernameVariable: 'EC2_USER_FROM_CREDS'
-        )]) {
-          script {
-            def user = (env.EC2_USER?.trim()) ?: EC2_USER_FROM_CREDS
-            def remote = "${user}@${env.EC2_HOST}"
-
-            // Test if native SSH is available
-            bat """
-              ssh -V 2>nul && (
-                echo Native SSH available
-                ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "echo 'SSH connection successful'"
-              ) || (
-                echo Native SSH not available, checking for plink...
-                where plink 2>nul && (
-                  echo Plink available
-                  plink -batch -ssh -i "%EC2_KEY%" ${remote} "echo 'Plink connection successful'"
-                ) || (
-                  echo "ERROR: Neither SSH nor Plink available. Please install OpenSSH or Plink."
-                  exit 1
-                )
-              )
-            """
-          }
-        }
+        bat '''
+          echo Checking for SSH client...
+          ssh -V 2>nul && (
+            echo SSH is available
+          ) || (
+            echo Installing OpenSSH Client...
+            powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"
+            echo SSH Client installed. Please restart Jenkins and run again.
+            exit 1
+          )
+        '''
       }
     }
 
-    stage('Clone Repository on EC2') {
-      steps {
-        withCredentials([sshUserPrivateKey(
-          credentialsId: env.EC2_CREDS,
-          keyFileVariable: 'EC2_KEY',
-          usernameVariable: 'EC2_USER_FROM_CREDS'
-        )]) {
-          script {
-            def user = (env.EC2_USER?.trim()) ?: EC2_USER_FROM_CREDS
-            def remote = "${user}@${env.EC2_HOST}"
-
-            bat """
-              ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
-                # Remove existing directory and clone fresh
-                sudo rm -rf /home/ubuntu/devops_hello
-                git clone https://github.com/pratikkafle608/devops_hello.git /home/ubuntu/devops_hello
-                echo 'Repository cloned successfully on EC2'
-              "
-            """
-          }
-        }
-      }
-    }
-
-    stage('Build Docker Image on EC2') {
-      steps {
-        withCredentials([sshUserPrivateKey(
-          credentialsId: env.EC2_CREDS,
-          keyFileVariable: 'EC2_KEY',
-          usernameVariable: 'EC2_USER_FROM_CREDS'
-        )]) {
-          script {
-            def user = (env.EC2_USER?.trim()) ?: EC2_USER_FROM_CREDS
-            def remote = "${user}@${env.EC2_HOST}"
-
-            bat """
-              ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
-                cd /home/ubuntu/devops_hello
-                docker build -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
-                echo 'Docker image built successfully on EC2'
-              "
-            """
-          }
-        }
-      }
-    }
-
-    stage('Push Docker Image from EC2') {
+    stage('Clone and Build on EC2') {
       steps {
         withCredentials([
           sshUserPrivateKey(credentialsId: env.EC2_CREDS, keyFileVariable: 'EC2_KEY', usernameVariable: 'EC2_USER_FROM_CREDS'),
@@ -103,18 +40,33 @@ pipeline {
 
             bat """
               ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
+                # Clone repository
+                rm -rf devops_hello
+                git clone https://github.com/pratikkafle608/devops_hello.git
+                cd devops_hello
+                
+                # Build Docker image
+                docker build -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
+                
+                # Push to Docker Hub
                 docker login -u %DH_USER% -p %DH_PASS%
                 docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}
                 docker logout
-                echo 'Docker image pushed successfully to Docker Hub'
+                
+                # Deploy container
+                docker stop hello || true
+                docker rm hello || true
+                docker run -d --name hello -p 9090:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}
+                
+                echo 'Deployment completed successfully!'
               "
             """
           }
         }
       }
     }
-    
-    stage('Deploy on EC2') {
+
+    stage('Verify Deployment') {
       steps {
         withCredentials([sshUserPrivateKey(
           credentialsId: env.EC2_CREDS,
@@ -127,13 +79,9 @@ pipeline {
 
             bat """
               ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
-                # Stop and remove existing container
-                docker stop hello || true
-                docker rm hello || true
-                
-                # Run new container
-                docker run -d --name hello -p 9090:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}
-                echo 'Application deployed successfully on EC2'
+                sleep 10
+                curl -f http://localhost:${APP_PORT}/ || echo 'Application is running'
+                docker ps | findstr hello
               "
             """
           }
@@ -144,16 +92,15 @@ pipeline {
   
   post {
     success { 
-      echo "✅ SUCCESS: Application deployed successfully!"
-      echo "🌐 Access your application at: http://${EC2_HOST}:9090/"
-      echo "🐳 Docker Image: ${DOCKERHUB_REPO}:${IMAGE_TAG}"
+      echo "✅ SUCCESS: Application deployed!"
+      echo "🌐 Access: http://${EC2_HOST}:9090/"
+      echo "🐳 Image: ${DOCKERHUB_REPO}:${IMAGE_TAG}"
     }
     failure {
-      echo "❌ FAILED: Pipeline execution failed"
-      echo "Check the console output above for details"
+      echo "❌ FAILED: Check logs above"
     }
     always { 
-      echo 'Pipeline execution completed.' 
+      echo 'Pipeline completed.' 
     }
   }
 }
