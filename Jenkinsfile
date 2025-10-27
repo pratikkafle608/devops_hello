@@ -38,7 +38,7 @@ pipeline {
               echo ✓ Docker is accessible
               echo.
               echo Docker system info:
-             docker images | head -5
+             docker images
             '''
           } catch (Exception e) {
             error """
