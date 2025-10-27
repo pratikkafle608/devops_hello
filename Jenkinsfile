@@ -17,7 +17,7 @@ pipeline {
       steps {
         checkout([
           $class: 'GitSCM',
-          branches: [[name: '*/main']],
+          branches: [[name: '*/master']],
           extensions: [],
           userRemoteConfigs: [[
             url: 'https://github.com/pratikkafle608/devops_hello.git',
