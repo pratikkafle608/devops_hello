@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    DOCKERHUB_REPO = 'hello' 
+    DOCKERHUB_REPO = 'pratikkafle/hello' 
     IMAGE_TAG      =  new Date().format('yyyyMMdd-HHmm')
     DOCKERHUB_CRED = 'dockerhub-creds'
 
