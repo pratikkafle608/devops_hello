@@ -1,8 +1,9 @@
 pipeline {
   agent any
 
+
   environment {
-    DOCKERHUB_REPO = 'pratikkafle/hello' 
+    DOCKERHUB_REPO = 'pratikkafle/hello'
     IMAGE_TAG      =  new Date().format('yyyyMMdd-HHmm')
     DOCKERHUB_CRED = 'dockerhub-creds'
 
@@ -11,7 +12,7 @@ pipeline {
     EC2_CREDS      = 'ec2-creds'                
     APP_PORT       = '8080'
   }
-  
+ 
   stages {
     stage('Checkout') {
       steps { checkout scm }
@@ -23,7 +24,7 @@ pipeline {
           // Ensure Docker is available on the agent (Docker Desktop on Windows or Docker Engine on Linux)
           if (isUnix()) {
             sh "docker version"
-            sh "docker build -t ${env.DOCKERHUB_REPO}:${env.IMAGE_TAG} ."
+            sh "docker buildx build --platform linux/amd64 -t ${env.DOCKERHUB_REPO}:${env.IMAGE_TAG} --push ."
           } else {
             bat "docker version"
             bat "docker build -t ${env.DOCKERHUB_REPO}:${env.IMAGE_TAG} ."
@@ -32,7 +33,7 @@ pipeline {
       }
     }
 
-    stage('Push Docker image') {
+    /*stage('Push Docker image') {
       steps {
         script {
           withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CRED, usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
@@ -50,8 +51,8 @@ pipeline {
           }
         }
       }
-    }
-    
+    } */
+   
     stage('Deploy on EC2 (pull & run)') {
         when { expression { return env.EC2_HOST?.trim() } }
         steps {
@@ -69,7 +70,7 @@ pipeline {
                       ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$EC2_KEY" ${remote} \\
                       'docker pull ${DOCKERHUB_REPO}:${IMAGE_TAG} && \\
                        docker rm -f hello || true && \\
-                       docker run -d --name hello -p 80:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}'
+                       docker run -d --name hello -p 9090:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}'
                       """
                 } else {
                    bat """
@@ -78,7 +79,7 @@ pipeline {
                        icacls "%KEY%" /inheritance:r
                        icacls "%KEY%" /grant:r "%WHO%:F"
                        icacls "%KEY%" /remove "BUILTIN\\Users" "NT AUTHORITY\\Authenticated Users" "Everyone" 1>nul 2>nul
-        
+       
                        ssh -T -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "%EC2_KEY%" ${remote} "docker pull ${DOCKERHUB_REPO}:${IMAGE_TAG} && (docker rm -f hello || true) && docker run -d --name hello -p 9090:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}"
                        """
                 }
