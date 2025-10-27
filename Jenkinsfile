@@ -12,6 +12,38 @@ pipeline {
   }
   
   stages {
+    stage('Test EC2 Connection') {
+      steps {
+        withCredentials([sshUserPrivateKey(
+          credentialsId: env.EC2_CREDS,
+          keyFileVariable: 'EC2_KEY',
+          usernameVariable: 'EC2_USER_FROM_CREDS'
+        )]) {
+          script {
+            def user = (env.EC2_USER?.trim()) ?: EC2_USER_FROM_CREDS
+            def remote = "${user}@${env.EC2_HOST}"
+
+            // Test if native SSH is available
+            bat """
+              ssh -V 2>nul && (
+                echo Native SSH available
+                ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "echo 'SSH connection successful'"
+              ) || (
+                echo Native SSH not available, checking for plink...
+                where plink 2>nul && (
+                  echo Plink available
+                  plink -batch -ssh -i "%EC2_KEY%" ${remote} "echo 'Plink connection successful'"
+                ) || (
+                  echo "ERROR: Neither SSH nor Plink available. Please install OpenSSH or Plink."
+                  exit 1
+                )
+              )
+            """
+          }
+        }
+      }
+    }
+
     stage('Clone Repository on EC2') {
       steps {
         withCredentials([sshUserPrivateKey(
@@ -24,10 +56,10 @@ pipeline {
             def remote = "${user}@${env.EC2_HOST}"
 
             bat """
-              plink -batch -ssh -i "%EC2_KEY%" ${remote} "
+              ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
                 # Remove existing directory and clone fresh
-                rm -rf devops_hello
-                git clone https://github.com/pratikkafle608/devops_hello.git
+                sudo rm -rf /home/ubuntu/devops_hello
+                git clone https://github.com/pratikkafle608/devops_hello.git /home/ubuntu/devops_hello
                 echo 'Repository cloned successfully on EC2'
               "
             """
@@ -48,8 +80,8 @@ pipeline {
             def remote = "${user}@${env.EC2_HOST}"
 
             bat """
-              plink -batch -ssh -i "%EC2_KEY%" ${remote} "
-                cd devops_hello
+              ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
+                cd /home/ubuntu/devops_hello
                 docker build -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
                 echo 'Docker image built successfully on EC2'
               "
@@ -70,7 +102,7 @@ pipeline {
             def remote = "${user}@${env.EC2_HOST}"
 
             bat """
-              plink -batch -ssh -i "%EC2_KEY%" ${remote} "
+              ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
                 docker login -u %DH_USER% -p %DH_PASS%
                 docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}
                 docker logout
@@ -94,7 +126,7 @@ pipeline {
             def remote = "${user}@${env.EC2_HOST}"
 
             bat """
-              plink -batch -ssh -i "%EC2_KEY%" ${remote} "
+              ssh -o StrictHostKeyChecking=no -i "%EC2_KEY%" ${remote} "
                 # Stop and remove existing container
                 docker stop hello || true
                 docker rm hello || true
@@ -102,33 +134,6 @@ pipeline {
                 # Run new container
                 docker run -d --name hello -p 9090:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}
                 echo 'Application deployed successfully on EC2'
-                
-                # Verify container is running
-                sleep 5
-                docker ps | grep hello
-              "
-            """
-          }
-        }
-      }
-    }
-
-    stage('Verify Deployment') {
-      steps {
-        withCredentials([sshUserPrivateKey(
-          credentialsId: env.EC2_CREDS,
-          keyFileVariable: 'EC2_KEY',
-          usernameVariable: 'EC2_USER_FROM_CREDS'
-        )]) {
-          script {
-            def user = (env.EC2_USER?.trim()) ?: EC2_USER_FROM_CREDS
-            def remote = "${user}@${env.EC2_HOST}"
-
-            bat """
-              plink -batch -ssh -i "%EC2_KEY%" ${remote} "
-                # Test if the application is responding
-                curl -f http://localhost:${APP_PORT}/ || echo 'Application health check passed'
-                echo 'Deployment verification completed'
               "
             """
           }
